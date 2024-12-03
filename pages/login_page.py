@@ -1,7 +1,7 @@
 # Copyright (c) 2024 Blue Brain Project/EPFL
 #
 # SPDX-License-Identifier: Apache-2.0
-
+import logging
 import time
 
 from selenium.common import TimeoutException
@@ -15,6 +15,7 @@ from pages.base_page import CustomBasePage
 class LoginPage(CustomBasePage):
     def __init__(self, browser, wait):
         super().__init__(browser, wait)
+        self.logger = logging.getLogger(__name__)
 
     def navigate_to_homepage(self):
         self.browser.delete_all_cookies()
@@ -53,6 +54,8 @@ class LoginPage(CustomBasePage):
         return self.wait.until(EC.element_to_be_clickable(LoginPageLocators.SUBMIT))
 
     def perform_login(self, username, password):
+        self.logger.info("Performing login with the provided credentials.")
+
         username_field = self.find_username_field()
         password_field = self.find_password_field()
 

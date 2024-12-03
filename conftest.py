@@ -28,8 +28,9 @@ from util.util_base import load_config
 @pytest.fixture(scope="class", autouse=True)
 def setup(request, pytestconfig):
     """Fixture to set up the browser/webdriver"""
-    browser_name = os.environ.get("BROWSER_NAME")
+    browser_name = os.environ.get("BROWSER_NAME", "chrome")
     headless_mode = pytestconfig.getoption("--headless")
+    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
     browser = None
     options = ChromeOptions()  # Default to Chrome options
 
@@ -38,24 +39,39 @@ def setup(request, pytestconfig):
             options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-gpu")
-        service = ChromeService(ChromeDriverManager().install())
-        browser = webdriver.Chrome(service=service, options=options)
+
+        if remote_url:
+            browser = webdriver.Remote(
+                command_executor=remote_url,
+                options=options
+            )
+        else:
+            service = ChromeService(ChromeDriverManager().install())
+            browser = webdriver.Chrome(service=service, options=options)
+
     elif browser_name == "firefox":
         options = FirefoxOptions()
         if headless_mode:
             options.add_argument("--headless")
             options.set_preference("extensions.enabled", False)
-        service = FirefoxService(executable_path=GeckoDriverManager().install())
-        browser = webdriver.Firefox(service=service, options=options)
-    elif browser_name == "headless":
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-gpu")
-        service = ChromeService(ChromeDriverManager().install())
-        browser = webdriver.Chrome(service=service, options=options)
 
+        if remote_url:
+            browser = webdriver.Remote(
+                command_executor=remote_url,
+                options=options
+            )
+        else:
+            service = FirefoxService(executable_path=GeckoDriverManager().install())
+            browser = webdriver.Firefox(service=service, options=options)
     else:
         raise ValueError("Invalid BROWSER_NAME: {}".format(browser_name))
+
+    # elif browser_name == "headless":
+    #     options.add_argument("--headless")
+    #     options.add_argument("--no-sandbox")
+    #     options.add_argument("--disable-gpu")
+    #     service = ChromeService(ChromeDriverManager().install())
+    #     browser = webdriver.Chrome(service=service, options=options)
 
     wait = WebDriverWait(browser, 10)
 
@@ -116,6 +132,12 @@ def navigate_to_login(setup):
     browser, wait = setup
     login_page = LoginPage(browser, wait)
 
+    username = os.environ.get("OBI_USERNAME")
+    password = os.environ.get("OBI_PASSWORD")
+
+    if not username or not password:
+        raise ValueError("Missing USERNAME or PASSWORD environment variables.")
+
     target_URL = login_page.navigate_to_homepage()
     browser.execute_script("window.stop();")
     print(f"conftest.py fixture - Navigated to: {target_URL}")
@@ -132,9 +154,15 @@ def login(setup, navigate_to_login):
     """Fixture to log in and ensure user is authenticated."""
     browser, wait = setup
     login_page = navigate_to_login
+
     config = load_config()
-    username = config['username']
-    password = config['password']
+    if not config:
+        raise ValueError("Failed to load configuration")
+    username = config.get('username')
+    password = config.get('password')
+
+    if not username or not password:
+        raise ValueError("Username or password is missing in the configuration!")
 
     login_page.perform_login(username, password)
     login_page.wait_for_login_complete()
@@ -209,8 +237,8 @@ def pytest_addoption(parser):
     parser.addoption(
         "--browser-name",
         action="store",
-        default="firefox",
-        choices=["firefox"],
+        default="chrome",
+        choices=["firefox", "chrome", "safari", "edge"],
         help="Specify the browser to run the tests in",
     )
     parser.addoption(
@@ -219,8 +247,17 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests in headless mode"
     )
-    parser.addoption("--log-file-path", action="store", default=None,
-                     help="Specify the log file path")
+    parser.addoption(
+        "--log-file-path",
+        action="store",
+        default=None,
+        help="Specify the log file path"
+    )
+    parser.addoption(
+        "--base-url",
+        action="store",
+        default="http://localhost:444/wd/hub",
+        help="BAse URL for the Selenium Webdriver server")
 
 
 def make_full_screenshot(browser, savename):
