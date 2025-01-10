@@ -13,13 +13,14 @@ from pages.base_page import CustomBasePage
 
 
 class LoginPage(CustomBasePage):
-    def __init__(self, browser, wait):
-        super().__init__(browser, wait)
+    def __init__(self, browser, wait, base_url):
+        super().__init__(browser, wait, base_url)
         self.logger = logging.getLogger(__name__)
 
     def navigate_to_homepage(self):
         self.browser.delete_all_cookies()
-        target_url = "https://openbluebrain.com/app"
+        target_url = self.base_url
+        # target_url = "https://openbluebrain.com/app"
         # target_url = "https://staging.openbluebrain.com/"
         self.browser.get(target_url)
         print("Starting URL from pages/login_page.py:", self.browser.current_url)

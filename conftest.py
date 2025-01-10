@@ -16,6 +16,10 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.safari.service import Service as SafariService
+from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
@@ -28,43 +32,74 @@ from util.util_base import load_config
 @pytest.fixture(scope="class", autouse=True)
 def setup(request, pytestconfig):
     """Fixture to set up the browser/webdriver"""
-    browser_name = os.environ.get("BROWSER_NAME", "chrome")
-    headless_mode = pytestconfig.getoption("--headless")
-    remote_url = os.environ.get("SELENIUM_REMOTE_URL")
+    environment = pytestconfig.getoption("env")
+    env_url = pytestconfig.getoption("env_url")
+    browser_name = pytestconfig.getoption("--browser-name")
+    print(f"Environment passed: {environment}")
+    print(f"Environment passed: {env_url}")
+    print(f"Environment passed: {browser_name}")
     browser = None
-    options = ChromeOptions()  # Default to Chrome options
+    base_url = None
 
-    if browser_name == "chrome":
-        if headless_mode:
-            options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-gpu")
+    if environment == "sauce-labs":
 
-        if remote_url:
-            browser = webdriver.Remote(
-                command_executor=remote_url,
-                options=options
-            )
+        print("Setting up Sauce Labs environment")
+        if not os.environ.get("SAUCE_USERNAME") or not os.environ.get("SAUCE_ACCESS_KEY"):
+            raise ValueError("Sauce Labs credentials (SAUCE_USERNAME, SAUCE_ACCESS_KEY) are required")
+        options = ChromeOptions()
+        options.browser_version = 'latest'
+        options.platform_name = 'Windows 10'
+
+        sauce_options = {
+            'username': os.environ["SAUCE_USERNAME"],
+            'accessKey': os.environ["SAUCE_ACCESS_KEY"],
+            'name': request.node.name  # Sauce job name
+        }
+
+        print(f"SAUCE_USERNAME: {os.environ.get('SAUCE_USERNAME')}")
+        print(f"SAUCE_ACCESS_KEY: {os.environ.get('SAUCE_ACCESS_KEY')}")
+
+        options.set_capability('sauce:options', sauce_options)
+        print(f"Sauce Labs Options: {options.to_capabilities()}")
+        if environment == "sauce-labs" and env_url == "staging":
+            base_url = "https://staging.openbrainplatform.com"
+        elif environment == "sauce-labs" and env_url == "production":
+            base_url = "https://openbluebrain.com/"
         else:
-            service = ChromeService(ChromeDriverManager().install())
-            browser = webdriver.Chrome(service=service, options=options)
+            raise ValueError(f"Invalid `--env_url` for Sauce Labs: {env_url}")
 
-    elif browser_name == "firefox":
-        options = FirefoxOptions()
-        if headless_mode:
-            options.add_argument("--headless")
-            options.set_preference("extensions.enabled", False)
+        sauce_url = "https://ondemand.eu-central-1.saucelabs.com:443/wd/hub"
+        print(f"Using Sauce Labs URL: {sauce_url}")
+        browser = webdriver.Remote(command_executor=sauce_url, options=options)
 
-        if remote_url:
-            browser = webdriver.Remote(
-                command_executor=remote_url,
-                options=options
-            )
-        else:
-            service = FirefoxService(executable_path=GeckoDriverManager().install())
-            browser = webdriver.Firefox(service=service, options=options)
     else:
-        raise ValueError("Invalid BROWSER_NAME: {}".format(browser_name))
+        if browser_name == "chrome":
+            options = ChromeOptions()
+            if pytestconfig.getoption("--headless"):
+                options.add_argument("--headless")
+            browser = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+
+        elif browser_name == "firefox":
+            options = FirefoxOptions()
+            if pytestconfig.getoption("--headless"):
+                options.add_argument("--headless")
+            browser = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options)
+
+        elif browser_name == "safari":
+            options = SafariOptions()
+            if pytestconfig.getoption("--headless"):
+                options.add_argument("--headless")
+            browser = webdriver.Safari(service=SafariService(), options=options)
+        else:
+            raise ValueError(f"Unsupported browser: {browser_name}")
+
+        if environment == "staging":
+            base_url = "https://staging.openbrainplatform.com/"
+        elif environment == "production":
+            base_url = "https://openbluebrain.com/"
+        else:
+            raise ValueError(f"Invalid `--env_url` for Sauce Labs: {env_url}")
+
     browser.set_page_load_timeout(60)
     wait = WebDriverWait(browser, 20)
 
@@ -75,9 +110,13 @@ def setup(request, pytestconfig):
 
     request.cls.browser = browser
     request.cls.wait = wait
-    yield browser, wait
+    request.cls.base_url = base_url
+    yield browser, wait, base_url
 
     if browser is not None:
+        if environment == "sauce-labs":
+            sauce_result = "failed" if request.session.testsfailed == 1 else "passed"
+            browser.execute_script(f"sauce:job-result={sauce_result}")
         browser.quit()
 
 
@@ -122,8 +161,8 @@ def logger(request):
 @pytest.fixture(scope="function")
 def navigate_to_login(setup):
     """Fixture that navigates to the login page"""
-    browser, wait = setup
-    login_page = LoginPage(browser, wait)
+    browser, wait, base_url = setup
+    login_page = LoginPage(browser, wait, base_url)
 
     username = os.environ.get("OBI_USERNAME")
     password = os.environ.get("OBI_PASSWORD")
@@ -131,9 +170,9 @@ def navigate_to_login(setup):
     if not username or not password:
         raise ValueError("Missing USERNAME or PASSWORD environment variables.")
 
-    target_URL = login_page.navigate_to_homepage()
+    target_url = login_page.navigate_to_homepage()
     browser.execute_script("window.stop();")
-    print(f"conftest.py fixture - Navigated to: {target_URL}")
+    print(f"conftest.py fixture - Navigated to: {target_url}")
 
     login_button = login_page.find_login_button()
     assert login_button.is_displayed()
@@ -145,7 +184,7 @@ def navigate_to_login(setup):
 @pytest.fixture(scope="function")
 def login(setup, navigate_to_login):
     """Fixture to log in and ensure user is authenticated."""
-    browser, wait = setup
+    browser, wait, base_url = setup
     login_page = navigate_to_login
 
     config = load_config()
@@ -205,7 +244,7 @@ def pytest_runtest_makereport(item):
                     if os.path.exists(file_name):
                         print(f"Screenshot successfully saved at: {file_name}")
                         html = ('<div><img src="%s" alt="screenshot" '
-                                'style="width:304px;height:228px;" onclick="window.open(this.src)" ' 
+                                'style="width:304px;height:228px;" onclick="window.open(this.src)" '
                                 'align="right"/></div>') % os.path.relpath(file_name)
                         extra.append(pytest_html.extras.html(html))
                     else:
@@ -286,8 +325,23 @@ def pytest_addoption(parser):
     parser.addoption(
         "--base-url",
         action="store",
-        default="http://localhost:444/wd/hub",
+        default="http://localhost:4444/wd/hub",
         help="BAse URL for the Selenium Webdriver server")
+
+    parser.addoption(
+        "--env",
+        action="store",
+        default="local",
+        choices=["local", "staging", "production", "sauce-labs"],
+        help="Specify the environment to run the tests in"
+    )
+    parser.addoption(
+        "--env_url",
+        action="store",
+        default="production",
+        choices=["staging", "production"],
+        help="Specify the environment URL: staging or production"
+    )
 
 
 def make_full_screenshot(browser, savename):

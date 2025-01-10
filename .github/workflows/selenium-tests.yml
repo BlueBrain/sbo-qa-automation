@@ -17,8 +17,14 @@ on:
 
 
 jobs:
-  test:
+  test-environments:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        environment: [staging, production, sauce-labs]
+
+    environment: ${{matrix.environment}}
 
     services:
       selenium:
@@ -27,6 +33,8 @@ jobs:
           - 4444:4444
         options: >-
           --shm-size 2g
+
+    concurrency: one-deploy-at-a-time
 
     steps:
     # Step 1: Checkout the repository
@@ -47,15 +55,42 @@ jobs:
         pip install pytest-html
 
     # Step 4: Run pytest tests
-    - name: Run Selenium tests
+    - name: Set BASE_URL based on environment variables
       env:
-        SELENIUM_REMOTE_URL: http://localhost:4444/wd/hub
-        OBI_USERNAME: ${{ secrets.OBI_USERNAME }}
-        OBI_PASSWORD: ${{ secrets.OBI_PASSWORD }}
+        STAGING_URL: ${{ vars.STAGING_URL }}
+        PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        SAUCE_LABS_URL: ${{ vars.SAUCE_LABS_URL }}
         BROWSER_NAME: firefox
       run: |
-        mkdir -p latest_logs/errors
-        pytest tests/ -sv --headless --html=latest_logs/report.html --self-contained-html
+        case "${{ matrix.environment }}" in
+          staging) echo "BASE_URL=${{ env.STAGING_URL }}" >> $GITHUB_ENV ;;
+          production) echo "BASE_URL=${{ env.PRODUCTION_URL }}" >> $GITHUB_ENV ;;
+          sauce-labs) echo "BASE_URL=${{ env.SAUCE_LABS_URL }}" >> $GITHUB_ENV ;;
+        esac
+
+    # Step 5: Set Selenium Remote URL for all environments
+    - name: Set SELENIUM_REMOTE_URL
+      run: |
+        case "${{ matrix.environment }}" in
+          sauce-labs) echo "SELENIUM_REMOTE_URL=https://ondemand.saucelabs.com/wd/hub" >> $GITHUB_ENV ;;
+          *) echo "SELENIUM_REMOTE_URL=http://localhost:4444/wd/hub" >> $GITHUB_ENV ;;
+        esac
+
+    # Step 6: Run tests
+    - name: Run tests for ${{ matrix.environment }}
+      env:
+        BASE_URL: ${{ env.BASE_URL }}
+        SELENIUM_REMOTE_URL: ${{ env.SELENIUM_REMOTE_URL }}
+        SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+        SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
+      run: |
+        if [ "${{ matrix.environment }}" = "sauce-labs" ]; then
+          pytest tests/ -sv --headless --html=latest_logs/report_sauce_labs.html --self-contained-html \
+            --sauce-labs
+        else
+          pytest tests/ -sv --headless --html=latest_logs/report_${{ matrix.environment }}.html --self-contained-html
+        fi
+    
 
     # Step 5: Upload screenshots as artifacts
     - name: Upload error screenshots
