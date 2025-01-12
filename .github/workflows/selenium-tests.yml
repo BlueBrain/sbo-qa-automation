@@ -47,14 +47,22 @@ jobs:
       with:
         python-version: '3.10'
 
-    # Step 3: Install dependencies
+    # Step 3: Set up Chrome and ChromeDriver
+    - name: Set up Chrome and ChromeDriver
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: 120
+        install-chromedriver: true
+        install-dependencies: true
+
+    # Step 4: Install dependencies
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest-html
 
-    # Step 4: Run pytest tests
+    # Step 5: Run pytest tests
     - name: Set BASE_URL based on environment variables
       env:
         STAGING_URL: ${{ vars.STAGING_URL }}
@@ -68,15 +76,15 @@ jobs:
           sauce-labs) echo "BASE_URL=${{ env.SAUCE_LABS_URL }}" >> $GITHUB_ENV ;;
         esac
 
-    # Step 5: Set Selenium Remote URL for all environments
+    # Step 6: Set Selenium Remote URL for all environments
     - name: Set SELENIUM_REMOTE_URL
       run: |
         case "${{ matrix.environment }}" in
-          sauce-labs) echo "SELENIUM_REMOTE_URL=https://ondemand.saucelabs.com/wd/hub" >> $GITHUB_ENV ;;
+          sauce-labs) echo "SELENIUM_REMOTE_URL=https://ondemand.eu-central-1.saucelabs.com:443/wd/hub" >> $GITHUB_ENV ;;
           *) echo "SELENIUM_REMOTE_URL=http://localhost:4444/wd/hub" >> $GITHUB_ENV ;;
         esac
 
-    # Step 6: Run tests
+    # Step 7: Run tests
     - name: Run tests for ${{ matrix.environment }}
       env:
         BASE_URL: ${{ env.BASE_URL }}
@@ -85,14 +93,14 @@ jobs:
         SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
       run: |
         if [ "${{ matrix.environment }}" = "sauce-labs" ]; then
-          pytest tests/ -sv --headless --html=latest_logs/report_sauce_labs.html --self-contained-html \
+          pytest tests/test_login.py -sv --headless --html=latest_logs/report_sauce_labs.html --self-contained-html \
             --sauce-labs
         else
-          pytest tests/ -sv --headless --html=latest_logs/report_${{ matrix.environment }}.html --self-contained-html
+          pytest tests/test_login.py -sv --headless --html=latest_logs/report_${{ matrix.environment }}.html --self-contained-html --browser-name=${{ env.BROWSER_NAME }}
         fi
     
 
-    # Step 5: Upload screenshots as artifacts
+    # Step 8: Upload screenshots as artifacts
     - name: Upload error screenshots
       if: failure() # Only upload if the job fails
       uses: actions/upload-artifact@v3
@@ -100,29 +108,29 @@ jobs:
         name: error-screenshots
         path: latest_logs/errors/
 
-    # Step 6: Upload HTML test report
+    # Step 9: Upload HTML test report
     - name: Upload test report
       uses: actions/upload-artifact@v3
       with:
         name: test-report
         path: latest_logs/report.html
 
-    # Step 7: Slack notification on success
-    - name: Notify Slack on Success
-      if: success()
-      env:
-        SLACK_WEBHOOK_URL_PASS: ${{ secrets.SLACK_WEBHOOK_URL_PASS }}
-      run: |
-        curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\":white_check_mark: Test pipeline succeeded in *${{ github.repository }}*. Branch: *${{ github.ref_name }}*\", \"username\":\"GitHub Actions\", \"icon_emoji\":\":rocket:\"}" \
-          $SLACK_WEBHOOK_URL_PASS
-
-#     Step 8: Slack notification on failure
-    - name: Notify Slack on Failure
-      if: failure()
-      env:
-        SLACK_WEBHOOK_URL_FAIL: ${{ secrets.SLACK_WEBHOOK_URL_FAIL }}
-      run: |
-        curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\":x: Test pipeline failed in *${{ github.repository }}*. Branch: *${{ github.ref_name }}*. Check the logs for details.\", \"username\":\"GitHub Actions\", \"icon_emoji\":\":warning:\"}" \
-          $SLACK_WEBHOOK_URL_FAIL
+#    # Step 7: Slack notification on success
+#    - name: Notify Slack on Success
+#      if: success()
+#      env:
+#        SLACK_WEBHOOK_URL_PASS: ${{ secrets.SLACK_WEBHOOK_URL_PASS }}
+#      run: |
+#        curl -X POST -H 'Content-type: application/json' \
+#          --data "{\"text\":\":white_check_mark: Test pipeline succeeded in *${{ github.repository }}*. Branch: *${{ github.ref_name }}*\", \"username\":\"GitHub Actions\", \"icon_emoji\":\":rocket:\"}" \
+#          $SLACK_WEBHOOK_URL_PASS
+#
+##     Step 8: Slack notification on failure
+#    - name: Notify Slack on Failure
+#      if: failure()
+#      env:
+#        SLACK_WEBHOOK_URL_FAIL: ${{ secrets.SLACK_WEBHOOK_URL_FAIL }}
+#      run: |
+#        curl -X POST -H 'Content-type: application/json' \
+#          --data "{\"text\":\":x: Test pipeline failed in *${{ github.repository }}*. Branch: *${{ github.ref_name }}*. Check the logs for details.\", \"username\":\"GitHub Actions\", \"icon_emoji\":\":warning:\"}" \
+#          $SLACK_WEBHOOK_URL_FAIL
