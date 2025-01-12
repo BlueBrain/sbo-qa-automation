@@ -34,9 +34,6 @@ jobs:
           # On Windows use `venv\Scripts\activate`
           # On Linux/macOS use `source venv/bin/activate`
           source venv/bin/activate
-
-      - name: Install dependencies
-        run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-html
@@ -83,6 +80,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
+          source venv/bin/activate  # Activate the virtual environment
           pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_production_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
@@ -111,6 +109,7 @@ jobs:
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
         run: |
+          source venv/bin/activate  # Activate the virtual environment
           pytest --env=sauce-labs --env_url=${{ vars.SAUCE_LABS_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_sauce_labs_${{ matrix.browser }}.html \
             --self-contained-html --sauce-labs --browser-name=${{ matrix.browser }}
@@ -136,6 +135,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.STAGING_URL }}
         run: |
+          source venv/bin/activate  # Activate the virtual environment
           pytest --env=staging --env_url=${{ vars.STAGING_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_staging_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
