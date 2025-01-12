@@ -1,6 +1,5 @@
 name: Run all tests
 
-
 on:
   workflow_dispatch:
   push:
@@ -12,134 +11,139 @@ on:
       - main
       - test-branch
   schedule:
-      - cron: "0 7 * * 2"  # Every Tuesday at 7:00 AM UTC (8:00 AM Zurich time during CET)
-      - cron: "0 7 * * 5"  # Every Friday at 7:00 AM UTC (8:00 AM Zurich time during CET)
-
+    - cron: "0 7 * * 2"  # Every Tuesday at 7:00 AM UTC (8:00 AM Zurich time during CET)
+    - cron: "0 7 * * 5"  # Every Friday at 7:00 AM UTC (8:00 AM Zurich time during CET)
 
 jobs:
-  test-environments:
+  setup-environments:
     runs-on: ubuntu-latest
+    outputs:
+      artifact_path: latest_logs/
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest-html
+
+      - name: Install required dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgconf-2-4 libasound2
+
+      - name: Set up Chrome and ChromeDriver
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 120
+          install-chromedriver: true
+          install-dependencies: true
+
+      - name: Prepare logs directory
+        run: mkdir -p latest_logs
+        id: prepare_logs
+        outputs:
+          logs_dir: latest_logs/
+
+  test-production:
+    needs: setup-environments
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        environment: [staging, production, sauce-labs]
         browser: [chrome, firefox]
-
-    environment: ${{matrix.environment}}
-
-    services:
-      selenium:
-        image: selenium/standalone-firefox:latest
-        ports:
-          - 4444:4444
-        options: >-
-          --shm-size 2g
-
-    concurrency: one-deploy-at-a-time
-
+    environment: production
     steps:
-    # Step 1: Checkout the repository
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Use shared setup
+        run: echo "Reusing setup from setup-environments job"
 
-    # Step 2: Set up Python
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Run tests for production
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
+            --html=latest_logs/report_production_${{ matrix.browser }}.html \
+            --self-contained-html --browser-name=${{ matrix.browser }}
 
-    # Step 3: Set up Chrome and ChromeDriver
-    - name: Set up Chrome and ChromeDriver
-      uses: browser-actions/setup-chrome@v1
-      with:
-        chrome-version: 120
-        install-chromedriver: true
-        install-dependencies: true
+      - name: Upload test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report-production-${{ matrix.browser }}
+          path: latest_logs/
 
-    # Step 4: Install dependencies
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest-html
+  test-sauce-labs:
+    needs: test-production
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+    environment: sauce-labs
+    steps:
+      - name: Use shared setup
+        run: echo "Reusing setup from setup-environments job"
 
-    # Step 5: Run pytest tests
-    - name: Set BASE_URL based on environment variables and BROWSER_NAME
-      env:
-        STAGING_URL: ${{ vars.STAGING_URL }}
-        PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
-        SAUCE_LABS_URL: ${{ vars.SAUCE_LABS_URL }}
-        BROWSER_NAME: firefox
-      run: |
-        for BROWSER_NAME in chrome firefox; do
-          case "${{ matrix.environment }}" in
-            staging) BASE_URL=${{ env.STAGING_URL }} ;;
-            production) BASE_URL=${{ env.PRODUCTION_URL }} ;;
-            sauce-labs) BASE_URL=${{ env.SAUCE_LABS_URL }} ;;
-        esac
+      - name: Run tests for Sauce Labs
+        env:
+          BASE_URL: ${{ vars.SAUCE_LABS_URL }}
+          SELENIUM_REMOTE_URL: https://ondemand.eu-central-1.saucelabs.com:443/wd/hub
+          SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+          SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
+        run: |
+          pytest --env=sauce-labs --env_url=${{ vars.SAUCE_LABS_URL }} tests/test_login.py -sv --headless \
+            --html=latest_logs/report_sauce_labs_${{ matrix.browser }}.html \
+            --self-contained-html --sauce-labs --browser-name=${{ matrix.browser }}
 
-        echo "Running tests on $BROWSER_NAME in environment ${{ matrix.environment }}"
-        pytest tests/ -sv --headless --html=latest_logs/report_${{ matrix.environment }}_${BROWSER_NAME}.html \
-          --self-contained-html --browser-name=$BROWSER_NAME
-        done
+      - name: Upload Sauce Labs test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report-sauce-labs-${{ matrix.browser }}
+          path: latest_logs/
 
-    # Step 6: Set Selenium Remote URL for all environments
-    - name: Set SELENIUM_REMOTE_URL
-      run: |
-        case "${{ matrix.environment }}" in
-          sauce-labs) echo "SELENIUM_REMOTE_URL=https://ondemand.eu-central-1.saucelabs.com:443/wd/hub" >> $GITHUB_ENV ;;
-          *) echo "SELENIUM_REMOTE_URL=http://localhost:4444/wd/hub" >> $GITHUB_ENV ;;
-        esac
+  test-staging:
+    needs: test-sauce-labs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+    environment: staging
+    steps:
+      - name: Use shared setup
+        run: echo "Reusing setup from setup-environments job"
 
-      # Step 7: Run tests selectively
-    - name: Run tests for ${{ matrix.environment }}
-      env:
-        BASE_URL: ${{ env.BASE_URL }}
-        SELENIUM_REMOTE_URL: ${{ env.SELENIUM_REMOTE_URL }}
-        SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
-        SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
-      run: |
-        if [ "${{ matrix.environment }}" = "staging" ]; then
-          pytest tests/test_login.py -sv \
-            --headless \
-            --html=latest_logs/report_staging.html \
-            --self-contained-html \
-            --env=staging \
-            --env_url=${{ env.BASE_URL }} \
-            --browser-name=${{ env.BROWSER_NAME }}
-        elif [ "${{ matrix.environment }}" = "production" ]; then
-          pytest tests/test_login.py -sv \
-            --headless \
-            --html=latest_logs/report_production.html \
-            --self-contained-html \
-            --env=production \
-            --env_url=${{ env.BASE_URL }} \
-            --browser-name=${{ env.BROWSER_NAME }}
-        elif [ "${{ matrix.environment }}" = "sauce-labs" ]; then
-          pytest tests/test_login.py -sv \
-            --headless \
-            --html=latest_logs/report_sauce_labs.html \
-            --self-contained-html \
-            --env=sauce-labs \
-            --env_url=${{ env.BASE_URL }} \
-            --sauce-labs
-        fi
-    
+      - name: Run tests for staging
+        env:
+          BASE_URL: ${{ vars.STAGING_URL }}
+        run: |
+          pytest --env=staging --env_url=${{ vars.STAGING_URL }} tests/test_login.py -sv --headless \
+            --html=latest_logs/report_staging_${{ matrix.browser }}.html \
+            --self-contained-html --browser-name=${{ matrix.browser }}
 
-    # Step 8: Upload screenshots as artifacts
-    - name: Upload error screenshots
-      if: failure() # Only upload if the job fails
-      uses: actions/upload-artifact@v3
-      with:
-        name: error-screenshots
-        path: latest_logs/errors/
+      - name: Upload Staging test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report-staging-${{ matrix.browser }}
+          path: latest_logs/
 
-    # Step 9: Upload HTML test report
-    - name: Upload test report
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-report
-        path: latest_logs/report.html
+
+
+#    - name: Upload error screenshots
+#      if: failure() # Only upload if the job fails
+#      uses: actions/upload-artifact@v3
+#      with:
+#        name: error-screenshots
+#        path: latest_logs/errors/
+#
+#    - name: Upload test report
+#      uses: actions/upload-artifact@v3
+#      with:
+#        name: test-report
+#        path: latest_logs/report.html
 
 #    # Step 7: Slack notification on success
 #    - name: Notify Slack on Success
