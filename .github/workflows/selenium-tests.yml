@@ -48,9 +48,6 @@ jobs:
 
       - name: Prepare logs directory
         run: mkdir -p latest_logs
-        id: prepare_logs
-        outputs:
-          logs_dir: latest_logs/
 
   test-production:
     needs: setup-environments
