@@ -23,6 +23,7 @@ jobs:
     strategy:
       matrix:
         environment: [staging, production, sauce-labs]
+        browser: [chrome, firefox]
 
     environment: ${{matrix.environment}}
 
@@ -63,18 +64,24 @@ jobs:
         pip install pytest-html
 
     # Step 5: Run pytest tests
-    - name: Set BASE_URL based on environment variables
+    - name: Set BASE_URL based on environment variables and BROWSER_NAME
       env:
         STAGING_URL: ${{ vars.STAGING_URL }}
         PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
         SAUCE_LABS_URL: ${{ vars.SAUCE_LABS_URL }}
         BROWSER_NAME: firefox
       run: |
-        case "${{ matrix.environment }}" in
-          staging) echo "BASE_URL=${{ env.STAGING_URL }}" >> $GITHUB_ENV ;;
-          production) echo "BASE_URL=${{ env.PRODUCTION_URL }}" >> $GITHUB_ENV ;;
-          sauce-labs) echo "BASE_URL=${{ env.SAUCE_LABS_URL }}" >> $GITHUB_ENV ;;
+        for BROWSER_NAME in chrome firefox; do
+          case "${{ matrix.environment }}" in
+            staging) BASE_URL=${{ env.STAGING_URL }} ;;
+            production) BASE_URL=${{ env.PRODUCTION_URL }} ;;
+            sauce-labs) BASE_URL=${{ env.SAUCE_LABS_URL }} ;;
         esac
+
+        echo "Running tests on $BROWSER_NAME in environment ${{ matrix.environment }}"
+        pytest tests/ -sv --headless --html=latest_logs/report_${{ matrix.environment }}_${BROWSER_NAME}.html \
+          --self-contained-html --browser-name=$BROWSER_NAME
+        done
 
     # Step 6: Set Selenium Remote URL for all environments
     - name: Set SELENIUM_REMOTE_URL
@@ -84,7 +91,7 @@ jobs:
           *) echo "SELENIUM_REMOTE_URL=http://localhost:4444/wd/hub" >> $GITHUB_ENV ;;
         esac
 
-    # Step 7: Run tests
+      # Step 7: Run tests selectively
     - name: Run tests for ${{ matrix.environment }}
       env:
         BASE_URL: ${{ env.BASE_URL }}
@@ -92,11 +99,30 @@ jobs:
         SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
         SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
       run: |
-        if [ "${{ matrix.environment }}" = "sauce-labs" ]; then
-          pytest tests/test_login.py -sv --headless --html=latest_logs/report_sauce_labs.html --self-contained-html \
+        if [ "${{ matrix.environment }}" = "staging" ]; then
+          pytest tests/test_login.py -sv \
+            --headless \
+            --html=latest_logs/report_staging.html \
+            --self-contained-html \
+            --env=staging \
+            --env_url=${{ env.BASE_URL }} \
+            --browser-name=${{ env.BROWSER_NAME }}
+        elif [ "${{ matrix.environment }}" = "production" ]; then
+          pytest tests/test_login.py -sv \
+            --headless \
+            --html=latest_logs/report_production.html \
+            --self-contained-html \
+            --env=production \
+            --env_url=${{ env.BASE_URL }} \
+            --browser-name=${{ env.BROWSER_NAME }}
+        elif [ "${{ matrix.environment }}" = "sauce-labs" ]; then
+          pytest tests/test_login.py -sv \
+            --headless \
+            --html=latest_logs/report_sauce_labs.html \
+            --self-contained-html \
+            --env=sauce-labs \
+            --env_url=${{ env.BASE_URL }} \
             --sauce-labs
-        else
-          pytest tests/test_login.py -sv --headless --html=latest_logs/report_${{ matrix.environment }}.html --self-contained-html --browser-name=${{ env.BROWSER_NAME }}
         fi
     
 
