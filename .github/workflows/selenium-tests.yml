@@ -46,13 +46,25 @@ jobs:
             sudo apt-get update
             sudo apt-get upgrade
 
-      - name: Set up Chrome and ChromeDriver
-        uses: browser-actions/setup-chrome@v1
+#      - name: Set up Chrome and ChromeDriver
+#        uses: browser-actions/setup-chrome@v1
+#        with:
+#          chrome-version: 120
+#          install-chromedriver: true
+#          install-dependencies: true
+          # Set up Firefox and GeckoDriver
+      - name: Set up Firefox and GeckoDriver
+        uses: browser-actions/setup-firefox@v1
         with:
-          chrome-version: 120
-          install-chromedriver: true
+          firefox-version: 'latest'  # You can specify a specific version or 'latest'
+          install-geckodriver: true
           install-dependencies: true
 
+          # Optionally, set environment variables for Firefox
+      - name: Set Firefox environment variables
+        run: |
+          echo "GECKODRIVER_PATH=/usr/local/bin/geckodriver" >> $GITHUB_ENV
+          echo "BROWSER=firefox" >> $GITHUB_ENV
       - name: Prepare logs directory
         run: mkdir -p latest_logs
 
