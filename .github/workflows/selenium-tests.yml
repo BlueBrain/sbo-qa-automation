@@ -31,11 +31,14 @@ jobs:
       - name: Set up virtual environment
         run: |
           python -m venv venv || { echo "Failed to create venv"; exit 1; }
-          ls -al venv  # Debugging step to confirm creation
+          ls -al venv/bin  # Debugging step to confirm creation
           echo PATH=/home/runner/work/${{ github.repository }}/venv/bin:$PATH >> $GITHUB_ENV
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-html
+
+      - name: Verify Python version
+        run: python --version
 
       - name: Verify virtual environment
         run: |
@@ -83,6 +86,11 @@ jobs:
 
       - name: Debug environment variables
         run: echo $PATH
+
+      - name: Verify pytest installation
+        run: |
+            echo $PATH
+            which pytest
 
       - name: Run tests for production
         env:
