@@ -96,6 +96,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
+          source venv/bin/activate
           python -m pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_production_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
