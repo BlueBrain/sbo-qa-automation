@@ -103,19 +103,17 @@ jobs:
       - name: Debug environment variables
         run: echo $PATH
 
-      - name: Verify pytest installation
+      - name: Activate virtual environment and verify pytest installation
         run: |
-            echo $PATH
-            which pytest
+          source venv/bin/activate  # Activate the virtual environment
+         which pytest  # Ensure pytest is available from the virtual environment
+         pytest --version  # Check pytest version to verify correct installation
 
       - name: Run tests for production
         env:
           BASE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
           source venv/bin/activate
-          which pytest
-          pip show pytest
-          pip freeze | grep pytest
           pytest --version
           python -m pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_production_${{ matrix.browser }}.html \
