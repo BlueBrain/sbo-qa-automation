@@ -37,6 +37,20 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-html
 
+      - name: Debug virtual environment
+        run: |
+          source venv/bin/activate
+          echo "Virtual environment activated"
+          which python
+          which pytest
+          pip show pytest
+      - name: Check PATH after activation
+        run: |
+          source venv/bin/activate
+          echo "PATH after activation: $PATH"
+          which pytest
+          pytest --version
+
       - name: Verify Python version
         run: python --version
 
@@ -101,7 +115,7 @@ jobs:
           pip show pytest
           pip freeze | grep pytest
           pytest --version
-          pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
+          python -m pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_production_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
 
@@ -129,7 +143,7 @@ jobs:
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
         run: |
-          pytest --env=sauce-labs --env_url=${{ vars.SAUCE_LABS_URL }} tests/test_login.py -sv --headless \
+          python -m pytest --env=sauce-labs --env_url=${{ vars.SAUCE_LABS_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_sauce_labs_${{ matrix.browser }}.html \
             --self-contained-html --sauce-labs --browser-name=${{ matrix.browser }}
 
@@ -154,7 +168,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.STAGING_URL }}
         run: |
-          pytest --env=staging --env_url=${{ vars.STAGING_URL }} tests/test_login.py -sv --headless \
+          python -m pytest --env=staging --env_url=${{ vars.STAGING_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_staging_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
 
