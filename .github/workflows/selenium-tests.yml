@@ -106,8 +106,8 @@ jobs:
       - name: Activate virtual environment and verify pytest installation
         run: |
           source venv/bin/activate  # Activate the virtual environment
-         which pytest  # Ensure pytest is available from the virtual environment
-         pytest --version  # Check pytest version to verify correct installation
+          which pytest  # Ensure pytest is available from the virtual environment
+          pytest --version  # Check pytest version to verify correct installation
 
       - name: Run tests for production
         env:
