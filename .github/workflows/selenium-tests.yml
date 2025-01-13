@@ -30,7 +30,8 @@ jobs:
 
       - name: Set up virtual environment
         run: |
-          python -m venv venv
+          python -m venv venv || { echo "Failed to create venv"; exit 1; }
+          ls -al venv  # Debugging step to confirm creation
           # On Windows use `venv\Scripts\activate`
           # On Linux/macOS use `source venv/bin/activate`
           source venv/bin/activate
@@ -38,6 +39,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-html
+
+      - name: Verify virtual environment
+        run: |
+          ls -al venv
 
       - name: Debug environment variables
         run: echo $PATH
