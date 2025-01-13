@@ -34,22 +34,25 @@ jobs:
           # On Windows use `venv\Scripts\activate`
           # On Linux/macOS use `source venv/bin/activate`
           source venv/bin/activate
+          echo PATH=$PATH >> $GITHUB_ENV
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-html
+
+      - name: Debug environment variables
+        run: echo $PATH
 
       - name: Install required dependencies
         run: |
             sudo apt-get update
             sudo apt-get upgrade
 
-#      - name: Set up Chrome and ChromeDriver
-#        uses: browser-actions/setup-chrome@v1
-#        with:
-#          chrome-version: 120
-#          install-chromedriver: true
-#          install-dependencies: true
-          # Set up Firefox and GeckoDriver
+      # Install Chrome (needed for Chrome tests)
+      - name: Install Chrome
+        run: |
+          sudo apt-get install -y google-chrome-stable
+
+        # Set up Firefox and GeckoDriver
       - name: Set up Firefox and GeckoDriver
         uses: browser-actions/setup-firefox@v1
         with:
@@ -80,7 +83,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.PRODUCTION_URL }}
         run: |
-          source venv/bin/activate  # Activate the virtual environment
+         # source venv/bin/activate  # Activate the virtual environment
           pytest --env=production --env_url=${{ vars.PRODUCTION_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_production_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
@@ -109,7 +112,7 @@ jobs:
           SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
           SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
         run: |
-          source venv/bin/activate  # Activate the virtual environment
+          # source venv/bin/activate  # Activate the virtual environment
           pytest --env=sauce-labs --env_url=${{ vars.SAUCE_LABS_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_sauce_labs_${{ matrix.browser }}.html \
             --self-contained-html --sauce-labs --browser-name=${{ matrix.browser }}
@@ -135,7 +138,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.STAGING_URL }}
         run: |
-          source venv/bin/activate  # Activate the virtual environment
+         # source venv/bin/activate  # Activate the virtual environment
           pytest --env=staging --env_url=${{ vars.STAGING_URL }} tests/test_login.py -sv --headless \
             --html=latest_logs/report_staging_${{ matrix.browser }}.html \
             --self-contained-html --browser-name=${{ matrix.browser }}
